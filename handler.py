@@ -76,6 +76,7 @@ import logging
 import os
 import sys
 import tempfile
+import torch 
 from pathlib import Path
 
 import runpod
@@ -86,6 +87,10 @@ logging.basicConfig(
     stream=sys.stdout,
 )
 logger = logging.getLogger("vascx-worker")
+
+# Torch check
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+logger.info(f"Using device: {device}")
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -111,11 +116,11 @@ class _Runner:
         from rtnls_inference import SegmentationEnsemble, HeatmapRegressionEnsemble
 
         logger.info(f"Loading AV weights from {AV_WEIGHTS} ...")
-        self.seg = SegmentationEnsemble.from_torchscript(str(AV_WEIGHTS))
+        self.seg = SegmentationEnsemble.from_torchscript(str(AV_WEIGHTS)).to(device)
         logger.info("AV weights loaded.")
 
         logger.info(f"Loading fovea weights from {FOVEA_WEIGHTS} ...")
-        self.hm = HeatmapRegressionEnsemble.from_torchscript(str(FOVEA_WEIGHTS))
+        self.hm = HeatmapRegressionEnsemble.from_torchscript(str(FOVEA_WEIGHTS)).to(device)
         logger.info("Fovea weights loaded.")
 
 
