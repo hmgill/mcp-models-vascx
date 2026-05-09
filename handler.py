@@ -56,7 +56,8 @@ Design notes
   cleaned up automatically after each inference call.
 
 - For AV segmentation, predict_preprocessed writes result PNGs to dest_path
-  and returns a list of numpy arrays.
+  and returns None. The result PNG is read back from dest_path/rgb.png
+  (stem matches the input rgb filename).
 
 - For fovea localisation, predict_preprocessed returns a DataFrame with
   columns [mean_x, mean_y]. No dest_path is needed.
@@ -76,7 +77,7 @@ import logging
 import os
 import sys
 import tempfile
-import torch 
+import torch
 from pathlib import Path
 
 import runpod
@@ -88,7 +89,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("vascx-worker")
 
-# Torch check
+# Torch device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 logger.info(f"Using device: {device}")
 
@@ -214,8 +215,14 @@ def _save_images(rgb_arr, ce_arr, tmp: Path) -> list[tuple[Path, Path]]:
 # ---------------------------------------------------------------------------
 
 def _run_av(rgb_arr, ce_arr, image_id: str) -> dict:
-    """Run AV segmentation and return the raw prediction dict."""
+    """
+    Run AV segmentation and return the raw prediction dict.
+
+    predict_preprocessed writes the result PNG to dest_path/<rgb_stem>.png
+    and returns None, so we read the result back from disk.
+    """
     import numpy as np
+    from PIL import Image
 
     logger.info(f"[{image_id}] Running AV segmentation ...")
     with tempfile.TemporaryDirectory() as tmp_dir:
@@ -224,10 +231,19 @@ def _run_av(rgb_arr, ce_arr, image_id: str) -> dict:
         dest_path = tmp / "av"
         dest_path.mkdir()
 
-        results = _runner.seg.predict_preprocessed(
+        # Returns None — result is written to dest_path/rgb.png
+        _runner.seg.predict_preprocessed(
             paired_paths, dest_path=dest_path, num_workers=0
         )
-        av_raw: np.ndarray = results[0]
+
+        # Read result back from disk; stem matches input rgb filename
+        result_path = dest_path / "rgb.png"
+        if not result_path.exists():
+            raise FileNotFoundError(
+                f"Expected AV result at {result_path} but file was not written. "
+                f"Contents of dest_path: {list(dest_path.iterdir())}"
+            )
+        av_raw = np.array(Image.open(result_path))
 
     av_raw = av_raw.astype(np.uint8)
 
